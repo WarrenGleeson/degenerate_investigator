@@ -5,6 +5,24 @@ from common.io_helpers import get_env, read_s3_csv, write_csv_and_parquet
 from process.ufc_feature_builder import build_fighter_lookup
 
 
+DIFF_COLS = [
+    "height_diff",
+    "reach_diff",
+    "slpm_diff",
+    "sapm_diff",
+    "td_avg_diff",
+    "sub_avg_diff",
+    "str_acc_diff",
+    "str_def_diff",
+    "td_acc_diff",
+    "td_def_diff",
+    "wins_diff",
+    "losses_diff",
+    "recent_fights_diff",
+    "news_flag_diff",
+]
+
+
 def main() -> None:
     bucket = get_env("S3_BUCKET", "degenerative-investigator")
     region = get_env("AWS_REGION", "us-east-2")
@@ -51,22 +69,19 @@ def main() -> None:
         "fighter_2_name",
         "weight_class",
         "fighter_1_win",
-        "height_diff",
-        "reach_diff",
-        "slpm_diff",
-        "sapm_diff",
-        "td_avg_diff",
-        "sub_avg_diff",
-        "str_acc_diff",
-        "str_def_diff",
-        "td_acc_diff",
-        "td_def_diff",
-        "wins_diff",
-        "losses_diff",
-        "recent_fights_diff",
-        "news_flag_diff",
+        *DIFF_COLS,
     ]
-    df_out = df[keep_cols].copy()
+    df_base = df[keep_cols].copy()
+
+    df_mirror = df_base.copy()
+    df_mirror[["fighter_1_name", "fighter_2_name"]] = df_mirror[["fighter_2_name", "fighter_1_name"]]
+    df_mirror["fighter_1_win"] = 1 - pd.to_numeric(df_mirror["fighter_1_win"], errors="coerce")
+    for col in DIFF_COLS:
+        df_mirror[col] = -pd.to_numeric(df_mirror[col], errors="coerce")
+
+    df_out = pd.concat([df_base, df_mirror], ignore_index=True)
+    df_out = df_out.dropna(subset=["fighter_1_win"]).copy()
+    df_out["fighter_1_win"] = df_out["fighter_1_win"].astype(int)
 
     csv_key = "processed/ufc/training_dataset.csv"
     parquet_key = "processed/ufc/parquets/training_dataset.parquet"
