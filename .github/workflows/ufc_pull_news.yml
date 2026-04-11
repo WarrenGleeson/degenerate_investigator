@@ -27,6 +27,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       FIGHTER_PROFILES_KEY: ${{ inputs.fighter_profiles_key }}
       TEST_ROWS: ${{ inputs.test_rows }}
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Check out repo
