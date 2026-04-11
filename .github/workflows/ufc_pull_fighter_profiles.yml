@@ -21,6 +21,7 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: "degenerative-investigator"
       EVENT_CARD_KEY: ${{ inputs.event_card_key || 'raw/ufc/events/ufc-327-prochazka-vs-ulberg_card.csv' }}
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Check out repo
