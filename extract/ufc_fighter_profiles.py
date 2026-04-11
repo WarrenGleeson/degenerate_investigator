@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import time
 from urllib.parse import urljoin
 
@@ -14,10 +13,28 @@ BASE_URL = "http://ufcstats.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
+def normalize_ufcstats_url(url: str) -> str:
+    text = (url or "").strip()
+    if text.startswith("https://ufcstats.com"):
+        return "http://" + text[len("https://") :]
+    return text
+
+
 def fetch_soup(url: str) -> BeautifulSoup:
-    response = requests.get(url, timeout=30, headers=HEADERS)
-    response.raise_for_status()
-    return BeautifulSoup(response.text, "html.parser")
+    primary = normalize_ufcstats_url(url)
+    attempts = [primary]
+    if primary.startswith("http://ufcstats.com"):
+        attempts.append(primary.replace("http://", "https://", 1))
+
+    last_exc = None
+    for attempt in attempts:
+        try:
+            response = requests.get(attempt, timeout=30, headers=HEADERS)
+            response.raise_for_status()
+            return BeautifulSoup(response.text, "html.parser")
+        except Exception as exc:
+            last_exc = exc
+    raise RuntimeError(f"Failed to fetch UFC Stats page after trying {attempts}: {last_exc}")
 
 
 def parse_profile(url: str) -> dict:
@@ -56,7 +73,7 @@ def parse_profile(url: str) -> dict:
 
     return {
         "fighter_name": full_name,
-        "fighter_url": url,
+        "fighter_url": normalize_ufcstats_url(url),
         "height": stat_map.get("height", ""),
         "weight": stat_map.get("weight", ""),
         "reach": stat_map.get("reach", ""),

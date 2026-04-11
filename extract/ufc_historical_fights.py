@@ -13,10 +13,28 @@ BASE_URL = "http://ufcstats.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
+def normalize_ufcstats_url(url: str) -> str:
+    text = (url or "").strip()
+    if text.startswith("https://ufcstats.com"):
+        return "http://" + text[len("https://") :]
+    return text
+
+
 def fetch_soup(url: str) -> BeautifulSoup:
-    response = requests.get(url, timeout=30, headers=HEADERS)
-    response.raise_for_status()
-    return BeautifulSoup(response.text, "html.parser")
+    primary = normalize_ufcstats_url(url)
+    attempts = [primary]
+    if primary.startswith("http://ufcstats.com"):
+        attempts.append(primary.replace("http://", "https://", 1))
+
+    last_exc = None
+    for attempt in attempts:
+        try:
+            response = requests.get(attempt, timeout=30, headers=HEADERS)
+            response.raise_for_status()
+            return BeautifulSoup(response.text, "html.parser")
+        except Exception as exc:
+            last_exc = exc
+    raise RuntimeError(f"Failed to fetch UFC Stats page after trying {attempts}: {last_exc}")
 
 
 def completed_event_urls(max_events: int) -> list[str]:
@@ -24,12 +42,14 @@ def completed_event_urls(max_events: int) -> list[str]:
     urls = []
     for link in soup.select("a[href*='event-details']"):
         href = link.get("href", "")
+        href = normalize_ufcstats_url(href)
         if href and href not in urls:
             urls.append(urljoin(BASE_URL, href))
     return urls[:max_events]
 
 
 def parse_event(event_url: str) -> list[dict]:
+    event_url = normalize_ufcstats_url(event_url)
     soup = fetch_soup(event_url)
     title_node = soup.select_one(".b-content__title-highlight") or soup.select_one(".b-content__title")
     event_name = title_node.get_text(" ", strip=True) if title_node else event_url

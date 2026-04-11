@@ -6,7 +6,7 @@ on:
       event_url:
         description: "UFC Stats event URL"
         required: false
-        default: "https://ufcstats.com/event-details/f3eb664db7fb1df3"
+        default: "http://ufcstats.com/event-details/f3eb664db7fb1df3"
 
 permissions:
   contents: read
@@ -20,7 +20,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: "degenerative-investigator"
-      EVENT_URL: ${{ inputs.event_url || 'https://ufcstats.com/event-details/f3eb664db7fb1df3' }}
+      EVENT_URL: ${{ inputs.event_url || 'http://ufcstats.com/event-details/f3eb664db7fb1df3' }}
 
     steps:
       - name: Check out repo
@@ -35,29 +35,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Validate event page fetch
-        run: |
-          python - <<'PY'
-          import os, requests
-          url = os.environ['EVENT_URL']
-          r = requests.get(url, timeout=30, headers={'User-Agent':'Mozilla/5.0'})
-          print('status_code=', r.status_code)
-          print('url=', url)
-          r.raise_for_status()
-          print('body_prefix=', r.text[:200].replace('\n',' '))
-          PY
-
-      - name: Validate S3 access
-        run: |
-          python - <<'PY'
-          import os, boto3
-          s3 = boto3.client('s3', region_name=os.environ['AWS_REGION'])
-          bucket = os.environ['S3_BUCKET']
-          print('bucket=', bucket)
-          print('region=', os.environ['AWS_REGION'])
-          print(s3.head_bucket(Bucket=bucket))
-          PY
 
       - name: Pull event card
         run: |
