@@ -5,7 +5,8 @@ on:
     inputs:
       event_url:
         description: "UFC Stats event URL"
-        required: true
+        required: false
+        default: "https://ufcstats.com/event-details/f3eb664db7fb1df3"
 
 permissions:
   contents: read
@@ -19,7 +20,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: "degenerative-investigator"
-      EVENT_URL: ${{ inputs.event_url }}
+      EVENT_URL: ${{ inputs.event_url || 'https://ufcstats.com/event-details/f3eb664db7fb1df3' }}
 
     steps:
       - name: Check out repo
