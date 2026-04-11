@@ -1,0 +1,49 @@
+name: UFC Generate Report (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      predictions_key:
+        description: "S3 key for event predictions CSV"
+        required: false
+        default: "processed/ufc/ufc-327-prochazka-vs-ulberg_predictions.csv"
+      news_key:
+        description: "S3 key for fighter news CSV"
+        required: false
+        default: "raw/news/fighter_recent_news.csv"
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      S3_BUCKET: "degenerative-investigator"
+      PREDICTIONS_KEY: ${{ inputs.predictions_key || 'processed/ufc/ufc-327-prochazka-vs-ulberg_predictions.csv' }}
+      NEWS_KEY: ${{ inputs.news_key || 'raw/news/fighter_recent_news.csv' }}
+      USE_OPENAI_REPORTS: "true"
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate event report
+        run: |
+          python process/generate_event_report.py
