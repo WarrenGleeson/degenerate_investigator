@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import io
 import json
 import time
 from typing import Any
@@ -13,22 +12,23 @@ from common.io_helpers import get_env, read_s3_csv, write_csv_and_parquet
 PROMPT_TEMPLATE = """
 Find recent factual reporting for the fighter below.
 Return strict JSON with this schema:
-{
-  "fighter_name": string,
-  "summary": string,
+{{
+  "fighter_name": "string",
+  "summary": "string",
   "items": [
-    {
-      "title": string,
-      "source": string,
-      "published_date": string,
-      "url": string,
-      "label": string,
-      "note": string
-    }
+    {{
+      "title": "string",
+      "source": "string",
+      "published_date": "string",
+      "url": "string",
+      "label": "string",
+      "note": "string"
+    }}
   ]
-}
+}}
 
 Focus on recent injuries, weight-cut issues, training-camp changes, layoffs, short-notice status, legal/personal disruptions, or coach comments.
+Return only JSON.
 Fighter: {fighter_name}
 """.strip()
 
