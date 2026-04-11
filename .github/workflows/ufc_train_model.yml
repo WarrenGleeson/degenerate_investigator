@@ -5,7 +5,8 @@ on:
     inputs:
       training_data_key:
         description: "S3 key for training features CSV"
-        required: true
+        required: false
+        default: "processed/ufc/training_dataset.csv"
 
 permissions:
   contents: read
@@ -19,7 +20,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: "degenerative-investigator"
-      TRAINING_DATA_KEY: ${{ inputs.training_data_key }}
+      TRAINING_DATA_KEY: ${{ inputs.training_data_key || 'processed/ufc/training_dataset.csv' }}
       PYTHONPATH: ${{ github.workspace }}
 
     steps:
