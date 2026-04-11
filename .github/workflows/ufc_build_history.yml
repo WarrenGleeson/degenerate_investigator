@@ -1,0 +1,41 @@
+name: UFC Build History (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_events:
+        description: "How many completed events to ingest"
+        required: false
+        default: "150"
+
+permissions:
+  contents: read
+
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: "degenerative-investigator"
+      MAX_EVENTS: ${{ inputs.max_events }}
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Pull historical fights
+        run: |
+          python extract/ufc_historical_fights.py
