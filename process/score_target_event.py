@@ -75,6 +75,16 @@ def confidence_bucket(prob: float) -> str:
     return "low"
 
 
+def model_probabilities(model, feature_cols: list[str], df: pd.DataFrame):
+    proba_raw = model.predict_proba(df[feature_cols])
+    classes = list(model.named_steps["clf"].classes_)
+    if proba_raw.shape[1] == 1:
+        only_class = int(classes[0])
+        return pd.Series(1.0 if only_class == 1 else 0.0, index=df.index).values
+    class_index = classes.index(1)
+    return proba_raw[:, class_index]
+
+
 def main() -> None:
     bucket = get_env("S3_BUCKET", "degenerative-investigator")
     region = get_env("AWS_REGION", "us-east-2")
@@ -87,8 +97,14 @@ def main() -> None:
     scoring_method = "heuristic"
     if s3_exists(s3, bucket, model_key):
         model_bytes = s3.get_object(Bucket=bucket, Key=model_key)["Body"].read()
-        model = pickle.loads(model_bytes)
-        proba = model.predict_proba(df[FEATURE_COLS])[:, 1]
+        artifact = pickle.loads(model_bytes)
+        if isinstance(artifact, dict) and "model" in artifact:
+            model = artifact["model"]
+            feature_cols = artifact.get("feature_cols", FEATURE_COLS)
+        else:
+            model = artifact
+            feature_cols = FEATURE_COLS
+        proba = model_probabilities(model, feature_cols, df)
         scoring_method = "trained_model"
     else:
         proba = heuristic_probabilities(df).values
