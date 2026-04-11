@@ -19,7 +19,7 @@ Return strict JSON with this schema:
 
 Write a neutral analysis for this matchup.
 Rules:
-- Do not mention betting advice or staking.
+- Do not mention betting advice, parlays, or staking.
 - Mention where the model and market differ when relevant.
 - Keep summary to 90-140 words.
 - Be specific and readable.
@@ -84,28 +84,67 @@ def load_news_summary(df_news: pd.DataFrame) -> pd.DataFrame:
 
 
 def deduplicate_matchups(df_pred: pd.DataFrame) -> pd.DataFrame:
-    df = df_pred.copy()
+    df = df_pred.copy().reset_index(drop=False).rename(columns={"index": "row_order"})
     df["fighter_1_key"] = df["fighter_1_name"].astype(str).str.strip().str.lower()
     df["fighter_2_key"] = df["fighter_2_name"].astype(str).str.strip().str.lower()
     df["matchup_key"] = df.apply(
         lambda row: "__vs__".join(sorted([row["fighter_1_key"], row["fighter_2_key"]])),
         axis=1,
     )
-    sort_cols = []
-    ascending = []
-    if "scoring_method" in df.columns:
-        df["trained_model_first"] = (df["scoring_method"].astype(str) == "trained_model").astype(int)
-        sort_cols.append("trained_model_first")
-        ascending.append(False)
-    if "confidence_bucket" in df.columns:
-        conf_rank = {"high": 3, "medium": 2, "low": 1}
-        df["confidence_rank"] = df["confidence_bucket"].astype(str).str.lower().map(conf_rank).fillna(0)
-        sort_cols.append("confidence_rank")
-        ascending.append(False)
-    sort_cols.extend(["fighter_1_name", "fighter_2_name"])
-    ascending.extend([True, True])
-    df = df.sort_values(sort_cols, ascending=ascending)
-    return df.drop_duplicates(subset=["matchup_key"], keep="first")
+
+    conf_rank = {"high": 3, "medium": 2, "low": 1}
+    df["confidence_rank"] = df.get("confidence_bucket", "").astype(str).str.lower().map(conf_rank).fillna(0)
+    df["trained_model_first"] = (df.get("scoring_method", "").astype(str) == "trained_model").astype(int)
+
+    chosen_rows = []
+    for _, group in df.groupby("matchup_key", sort=False):
+        group = group.sort_values(["trained_model_first", "confidence_rank", "row_order"], ascending=[False, False, True])
+        chosen_rows.append(group.iloc[0])
+
+    deduped = pd.DataFrame(chosen_rows).sort_values("row_order").reset_index(drop=True)
+    return deduped
+
+
+def build_event_overview(df: pd.DataFrame) -> list[str]:
+    sections: list[str] = []
+    if df.empty:
+        return sections
+
+    sections.append("## Event Overview\n")
+    sections.append(f"- Fights covered: {len(df)}\n")
+    main_event = df.iloc[0]
+    sections.append(
+        f"- Main event model lean: {main_event.get('predicted_winner', '')} over "
+        f"{main_event.get('fighter_1_name', '') if main_event.get('predicted_winner', '') != main_event.get('fighter_1_name', '') else main_event.get('fighter_2_name', '')}"
+        f" ({round(float(main_event.get('fighter_1_win_probability', 0.0) if main_event.get('predicted_winner', '') == main_event.get('fighter_1_name', '') else main_event.get('fighter_2_win_probability', 0.0)) * 100, 1)}%)\n"
+    )
+    high_conf = int((df.get("confidence_bucket", "") == "high").sum())
+    sections.append(f"- High-confidence model leans: {high_conf}\n\n")
+
+    sections.append("## Strongest Model Leans\n")
+    strongest = df.copy()
+    strongest["max_prob"] = strongest[["fighter_1_win_probability", "fighter_2_win_probability"]].max(axis=1)
+    strongest = strongest.sort_values(["max_prob", "confidence_rank" if "confidence_rank" in strongest.columns else "event_name"], ascending=[False, False])
+    for _, row in strongest.head(3).iterrows():
+        sections.append(
+            f"- {row.get('predicted_winner', '')} in {row.get('fighter_1_name', '')} vs {row.get('fighter_2_name', '')} "
+            f"({round(float(max(row.get('fighter_1_win_probability', 0.0), row.get('fighter_2_win_probability', 0.0))) * 100, 1)}%, {row.get('confidence_bucket', '')})\n"
+        )
+    sections.append("\n")
+
+    sections.append("## Largest Model-Market Gaps\n")
+    gaps = []
+    for _, row in df.iterrows():
+        f1_gap = abs(float(row.get("fighter_1_model_market_delta", 0.0) or 0.0))
+        f2_gap = abs(float(row.get("fighter_2_model_market_delta", 0.0) or 0.0))
+        gaps.append((max(f1_gap, f2_gap), row))
+    for _, row in sorted(gaps, key=lambda x: x[0], reverse=True)[:3]:
+        sections.append(
+            f"- {row.get('fighter_1_name', '')} vs {row.get('fighter_2_name', '')}: "
+            f"largest gap on {row.get('predicted_winner', '')} view, confidence {row.get('confidence_bucket', '')}.\n"
+        )
+    sections.append("\n")
+    return sections
 
 
 def main() -> None:
@@ -133,7 +172,8 @@ def main() -> None:
     report_rows = []
     markdown_sections = []
     event_name = str(df["event_name"].iloc[0]) if not df.empty else "Event Report"
-    markdown_sections.append(f"# {event_name} Report\n")
+    markdown_sections.append(f"# {event_name} Report\n\n")
+    markdown_sections.extend(build_event_overview(df))
 
     prompt_fields = [
         "event_name",
@@ -181,6 +221,7 @@ def main() -> None:
                 "headline": payload.get("headline", ""),
                 "summary": payload.get("summary", ""),
                 "risk_note": payload.get("risk_note", ""),
+                "row_order": row.get("row_order", ""),
             }
         )
 
@@ -192,7 +233,7 @@ def main() -> None:
         markdown_sections.append(payload.get("summary", "") + "\n\n")
         markdown_sections.append("Risk note: " + payload.get("risk_note", "") + "\n\n")
 
-    df_report = pd.DataFrame(report_rows)
+    df_report = pd.DataFrame(report_rows).sort_values("row_order").drop(columns=["row_order"], errors="ignore")
     event_slug = str(df["event_slug"].iloc[0]) if not df.empty else "event"
     csv_key = f"processed/reports/{event_slug}_fight_report.csv"
     parquet_key = f"processed/reports/parquets/{event_slug}_fight_report.parquet"
