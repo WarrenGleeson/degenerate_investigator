@@ -83,6 +83,31 @@ def load_news_summary(df_news: pd.DataFrame) -> pd.DataFrame:
     return summary_df
 
 
+def deduplicate_matchups(df_pred: pd.DataFrame) -> pd.DataFrame:
+    df = df_pred.copy()
+    df["fighter_1_key"] = df["fighter_1_name"].astype(str).str.strip().str.lower()
+    df["fighter_2_key"] = df["fighter_2_name"].astype(str).str.strip().str.lower()
+    df["matchup_key"] = df.apply(
+        lambda row: "__vs__".join(sorted([row["fighter_1_key"], row["fighter_2_key"]])),
+        axis=1,
+    )
+    sort_cols = []
+    ascending = []
+    if "scoring_method" in df.columns:
+        df["trained_model_first"] = (df["scoring_method"].astype(str) == "trained_model").astype(int)
+        sort_cols.append("trained_model_first")
+        ascending.append(False)
+    if "confidence_bucket" in df.columns:
+        conf_rank = {"high": 3, "medium": 2, "low": 1}
+        df["confidence_rank"] = df["confidence_bucket"].astype(str).str.lower().map(conf_rank).fillna(0)
+        sort_cols.append("confidence_rank")
+        ascending.append(False)
+    sort_cols.extend(["fighter_1_name", "fighter_2_name"])
+    ascending.extend([True, True])
+    df = df.sort_values(sort_cols, ascending=ascending)
+    return df.drop_duplicates(subset=["matchup_key"], keep="first")
+
+
 def main() -> None:
     bucket = get_env("S3_BUCKET", "degenerative-investigator")
     region = get_env("AWS_REGION", "us-east-2")
@@ -91,14 +116,13 @@ def main() -> None:
     use_openai = get_env("USE_OPENAI_REPORTS", "true").strip().lower() == "true"
 
     df_pred = read_s3_csv(bucket=bucket, key=predictions_key, region=region)
+    df_pred = deduplicate_matchups(df_pred)
     try:
         df_news = read_s3_csv(bucket=bucket, key=news_key, region=region)
     except Exception:
         df_news = pd.DataFrame()
 
     news_summary = load_news_summary(df_news)
-    df_pred["fighter_1_key"] = df_pred["fighter_1_name"].astype(str).str.strip().str.lower()
-    df_pred["fighter_2_key"] = df_pred["fighter_2_name"].astype(str).str.strip().str.lower()
     f1_news = news_summary.rename(columns={"fighter_name_key": "fighter_1_key", "news_summary": "fighter_1_news_summary"})
     f2_news = news_summary.rename(columns={"fighter_name_key": "fighter_2_key", "news_summary": "fighter_2_news_summary"})
     df = df_pred.merge(f1_news, on="fighter_1_key", how="left").merge(f2_news, on="fighter_2_key", how="left")
@@ -111,29 +135,31 @@ def main() -> None:
     event_name = str(df["event_name"].iloc[0]) if not df.empty else "Event Report"
     markdown_sections.append(f"# {event_name} Report\n")
 
+    prompt_fields = [
+        "event_name",
+        "weight_class",
+        "fighter_1_name",
+        "fighter_2_name",
+        "predicted_winner",
+        "fighter_1_win_probability",
+        "fighter_2_win_probability",
+        "confidence_bucket",
+        "top_signals",
+        "fighter_1_market_implied_prob",
+        "fighter_2_market_implied_prob",
+        "fighter_1_model_market_delta",
+        "fighter_2_model_market_delta",
+        "fighter_1_news_summary",
+        "fighter_2_news_summary",
+    ]
+
     for _, row in df.iterrows():
         payload = None
         if client is not None:
             try:
                 response = client.responses.create(
                     model=get_env("OPENAI_MODEL", "gpt-4.1-mini"),
-                    input=PROMPT_TEMPLATE.format(**{k: row.get(k, "") for k in [
-                        "event_name",
-                        "weight_class",
-                        "fighter_1_name",
-                        "fighter_2_name",
-                        "predicted_winner",
-                        "fighter_1_win_probability",
-                        "fighter_2_win_probability",
-                        "confidence_bucket",
-                        "top_signals",
-                        "fighter_1_market_implied_prob",
-                        "fighter_2_market_implied_prob",
-                        "fighter_1_model_market_delta",
-                        "fighter_2_model_market_delta",
-                        "fighter_1_news_summary",
-                        "fighter_2_news_summary",
-                    ]}),
+                    input=PROMPT_TEMPLATE.format(**{k: row.get(k, "") for k in prompt_fields}),
                     max_output_tokens=500,
                 )
                 payload = parse_json(response.output_text)
