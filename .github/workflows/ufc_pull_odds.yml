@@ -17,6 +17,7 @@ jobs:
       S3_BUCKET: "degenerative-investigator"
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
       BOOKMAKERS: ""
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Check out repo
