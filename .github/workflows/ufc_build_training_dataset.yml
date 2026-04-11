@@ -1,0 +1,38 @@
+name: UFC Build Training Dataset (Manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dataset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: "degenerative-investigator"
+      HISTORICAL_FIGHTS_KEY: "raw/ufc/fights/historical_fights.csv"
+      HISTORICAL_FIGHTER_PROFILES_KEY: "raw/ufc/fighters/historical_fighter_profiles.csv"
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build historical training dataset
+        run: |
+          python process/build_historical_training_dataset.py
