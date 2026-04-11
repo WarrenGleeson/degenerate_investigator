@@ -5,7 +5,8 @@ on:
     inputs:
       event_card_key:
         description: "S3 key for the target event card CSV"
-        required: true
+        required: false
+        default: "raw/ufc/events/ufc-327-prochazka-vs-ulberg_card.csv"
 
 permissions:
   contents: read
@@ -19,7 +20,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: "degenerative-investigator"
-      EVENT_CARD_KEY: ${{ inputs.event_card_key }}
+      EVENT_CARD_KEY: ${{ inputs.event_card_key || 'raw/ufc/events/ufc-327-prochazka-vs-ulberg_card.csv' }}
 
     steps:
       - name: Check out repo
