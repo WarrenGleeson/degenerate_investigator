@@ -21,6 +21,7 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: "degenerative-investigator"
       FEATURES_KEY: ${{ inputs.features_key || 'processed/ufc/ufc-327-prochazka-vs-ulberg_fight_features.csv' }}
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Check out repo
