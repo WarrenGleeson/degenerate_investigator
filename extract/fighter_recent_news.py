@@ -33,6 +33,29 @@ Fighter: {fighter_name}
 """.strip()
 
 
+REPAIR_TEMPLATE = """
+Repair the following into valid JSON only.
+Keep the same schema:
+{{
+  "fighter_name": "string",
+  "summary": "string",
+  "items": [
+    {{
+      "title": "string",
+      "source": "string",
+      "published_date": "string",
+      "url": "string",
+      "label": "string",
+      "note": "string"
+    }}
+  ]
+}}
+
+Text to repair:
+{raw_text}
+""".strip()
+
+
 def extract_json(text: str) -> dict[str, Any]:
     text = (text or "").strip()
     start = text.find("{")
@@ -40,6 +63,32 @@ def extract_json(text: str) -> dict[str, Any]:
     if start == -1 or end == -1:
         raise RuntimeError("Model did not return JSON.")
     return json.loads(text[start : end + 1])
+
+
+def make_parse_error_row(fighter_name: str, raw_text: str, reason: str) -> dict[str, str]:
+    return {
+        "fighter_name": fighter_name,
+        "summary": "",
+        "title": "",
+        "source": "",
+        "published_date": "",
+        "url": "",
+        "label": "parse_error",
+        "note": f"{reason}: {(raw_text or '')[:1500]}",
+    }
+
+
+def call_model(client: OpenAI, prompt: str, use_web_search: bool) -> str:
+    kwargs: dict[str, Any] = {
+        "model": get_env("OPENAI_MODEL", "gpt-4.1-mini"),
+        "input": prompt,
+        "max_output_tokens": 900,
+    }
+    if use_web_search:
+        kwargs["tools"] = [{"type": "web_search"}]
+        kwargs["tool_choice"] = "auto"
+    response = client.responses.create(**kwargs)
+    return response.output_text or ""
 
 
 def main() -> None:
@@ -58,28 +107,46 @@ def main() -> None:
     rows = []
     for index, fighter_name in enumerate(fighter_names, start=1):
         print(f"[{index}/{len(fighter_names)}] {fighter_name}")
-        response = client.responses.create(
-            model=get_env("OPENAI_MODEL", "gpt-4.1-mini"),
-            input=PROMPT_TEMPLATE.format(fighter_name=fighter_name),
-            tools=[{"type": "web_search"}],
-            tool_choice="auto",
-            max_output_tokens=900,
-        )
-        payload = extract_json(response.output_text)
-        summary = str(payload.get("summary", "")).strip()
-        for item in payload.get("items", []):
-            rows.append(
-                {
-                    "fighter_name": fighter_name,
-                    "summary": summary,
-                    "title": item.get("title", ""),
-                    "source": item.get("source", ""),
-                    "published_date": item.get("published_date", ""),
-                    "url": item.get("url", ""),
-                    "label": item.get("label", ""),
-                    "note": item.get("note", ""),
-                }
-            )
+        try:
+            raw_text = call_model(client, PROMPT_TEMPLATE.format(fighter_name=fighter_name), use_web_search=True)
+            try:
+                payload = extract_json(raw_text)
+            except Exception:
+                repaired_text = call_model(client, REPAIR_TEMPLATE.format(raw_text=raw_text), use_web_search=False)
+                payload = extract_json(repaired_text)
+
+            summary = str(payload.get("summary", "")).strip()
+            items = payload.get("items", []) or []
+            if not items:
+                rows.append(
+                    {
+                        "fighter_name": fighter_name,
+                        "summary": summary,
+                        "title": "",
+                        "source": "",
+                        "published_date": "",
+                        "url": "",
+                        "label": "no_recent_items",
+                        "note": "No recent items returned.",
+                    }
+                )
+            else:
+                for item in items:
+                    rows.append(
+                        {
+                            "fighter_name": fighter_name,
+                            "summary": summary,
+                            "title": item.get("title", ""),
+                            "source": item.get("source", ""),
+                            "published_date": item.get("published_date", ""),
+                            "url": item.get("url", ""),
+                            "label": item.get("label", ""),
+                            "note": item.get("note", ""),
+                        }
+                    )
+        except Exception as exc:
+            rows.append(make_parse_error_row(fighter_name, locals().get("raw_text", ""), str(exc)))
+
         time.sleep(delay)
 
     df = pd.DataFrame(rows)
