@@ -1,0 +1,7 @@
+schema_version: 1
+name: degenerate_investigator
+status: active
+visibility: private
+summary: UFC-focused fight data, modelling, scoring, and report-generation pipeline.
+docs_publish: false
+portfolio_publish: false
