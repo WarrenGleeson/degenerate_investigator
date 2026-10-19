@@ -1,33 +1,59 @@
 # degenerate_investigator
 
-Fight data pipelines, event analysis, and outcome modelling.
+Private UFC-focused fight data, modelling, scoring, and report-generation pipeline.
 
 ## Purpose
 
-This repo is for building a UFC-first fight analytics pipeline that:
-- ingests event, fighter, odds, and news data
-- stores raw and processed datasets in S3
-- builds matchup features for modeling
-- trains win-probability models
-- scores a target event
-- generates written fight-analysis reports
+This repository:
 
-This repo does **not** include staking logic or bookmaker-targeted betting recommendations.
+- ingests event, fighter, odds, and news data;
+- stores raw and processed datasets in S3;
+- builds matchup features for modelling;
+- trains win-probability models;
+- scores a target event; and
+- generates written fight-analysis reports.
+
+It does **not** include staking logic or bookmaker-targeted betting recommendations.
+
+## Status
+
+Active development. The main pipeline stages and GitHub Actions workflows exist, but live source availability, model quality, and end-to-end report generation should be verified before relying on outputs.
+
+## Architecture
+
+```text
+External fight / odds / news sources
+            |
+            v
+        extract/
+            |
+            v
+           S3
+            |
+            v
+        process/
+   features -> model -> score -> report
+            |
+            v
+  reports/latest_fight_report.md
+```
+
+Shared S3/file helpers live under `common/`.
 
 ## Project layout
 
 ```text
-.github/workflows/
-common/
-extract/
-process/
-prompts/
-tasks/
+.github/workflows/   Pipeline workflows
+common/              Shared helpers
+extract/             Event, fighter, odds, and news ingestion
+process/             Features, training, scoring, and reporting
+reports/             Generated report output
 ```
 
 ## AWS configuration
 
-Set these repository secrets in GitHub:
+Required repository secrets include:
+
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `AWS_REGION`
@@ -36,8 +62,11 @@ Set these repository secrets in GitHub:
 - `NEWS_API_KEY` (optional)
 
 Project defaults:
+
 - bucket: `degenerative-investigator`
 - region: `us-east-2`
+
+Existing AWS resource names are intentionally preserved during repository/account migration.
 
 ## S3 layout
 
@@ -52,27 +81,36 @@ processed/ufc/parquets/
 processed/reports/
 ```
 
-## MVP workflows
+## Main workflows
 
-- `ufc_ingest_event.yml`
-- `ufc_pull_odds.yml`
-- `ufc_pull_news.yml`
-- `ufc_build_features.yml`
-- `ufc_train_model.yml`
-- `ufc_score_event.yml`
+Workflows are under `.github/workflows/`. Key stages include:
 
-## Tonight's fastest path
+- event/fighter ingestion;
+- odds and news collection;
+- feature and training-dataset generation;
+- model training;
+- event scoring;
+- report generation; and
+- exporting the latest report back to the repository.
 
-1. Add GitHub secrets.
-2. Run `ufc_ingest_event.yml` with a UFC Stats event URL.
-3. Run `ufc_pull_odds.yml`.
-4. Run `ufc_pull_news.yml`.
-5. Run `ufc_build_features.yml`.
-6. Run `ufc_train_model.yml` once historical data is available.
-7. Run `ufc_score_event.yml`.
+## Running and validation
 
-## Notes
+Install dependencies with:
 
-- UFC Stats is the primary free structured source for event, fighter, and fight-level information.
-- The Odds API is the primary current-odds source for the MVP.
-- OpenAI web search is used for recent fighter context and report generation.
+```bash
+pip install -r requirements.txt
+```
+
+Most operational runs are performed through the GitHub Actions workflows. Check the latest workflow results before assuming a source or pipeline stage is healthy.
+
+There is currently no dedicated automated test suite in the repository.
+
+## Documentation
+
+- `DIRECTOR.md` — AI-agent operating instructions
+- `project.yaml` — machine-readable project metadata
+- `reports/latest_fight_report.md` — latest repository-exported report
+
+## Roadmap
+
+Near-term work is to keep validating data-source reliability, model quality, and end-to-end report generation before expanding the architecture or adding new product scope.
